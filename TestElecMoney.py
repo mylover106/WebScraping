@@ -10,6 +10,7 @@ from urllib.request import urlretrieve, urlopen
 import requests
 from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
+from sendmail import SendEmail
 
 
 def build_post_data(html):
@@ -54,31 +55,61 @@ def getNameVal(html):
     return name2value
 
 
-url = "http://elec.xmu.edu.cn/PdmlWebSetup/Pages/SMSMain.aspx"
-html = requests.get(url).text
-html = BeautifulSoup(html)
-dct = build_post_data(html)
-dct['__EVENTARGUMENT'] = 'drxiaoqu'
-dct['drxiaoqu'] = '09'
+def ElecRoomQuery(xiaoqu, louming=None, roomid=None):
+    if roomid is not None:
+        if len(roomid) < 4:
+            roomid = '0' + roomid
+        if len(roomid) > 4:
+            roomid = roomid[-4:]
+    
+    url = "http://elec.xmu.edu.cn/PdmlWebSetup/Pages/SMSMain.aspx"
+    html = requests.get(url).text
+    html = BeautifulSoup(html, 'html.parser')
+    name2val = getNameVal(html)
+    dct = build_post_data(html)
+    dct['__EVENTARGUMENT'] = 'drxiaoqu'
+    dct['drxiaoqu'] = name2val['校区'][xiaoqu]
 
 
-newhtml = requests.post(url, dct).text
-newhtml = BeautifulSoup(newhtml)
+    newhtml = requests.post(url, dct).text
+    newhtml = BeautifulSoup(newhtml, 'html.parser')
 
 
-dct = build_post_data(newhtml)
+    dct = build_post_data(newhtml)
+
+    name2val = getNameVal(newhtml)
+    if roomid is None:
+        return name2val
+
+    dct['drxiaoqu'] = name2val['校区'][xiaoqu]
+    dct['drlou'] = name2val['楼名'][louming]
+    dct['txtRoomid'] = roomid
 
 
-dct['drxiaoqu'] = '09'
-dct['drlou'] = '7号楼'
-dct['txtRoomid'] = '0519'
+    finalhtml = requests.post(url, dct)
+    finalhtml = BeautifulSoup(finalhtml.text, 'html.parser')
+    # print(finalhtml)
+    left_money = finalhtml.findAll('td', {"class":"dxgv", "align":"center", "style":"border-right-width:0px;"})[0].text
+    return float(left_money)
 
 
-finalhtml = requests.post(url, dct)
-finalhtml = BeautifulSoup(finalhtml.text)
-left_money = finalhtml.find('tr', {"id":"dxgvSubInfo_DXDataRow1"}).find("td", {"style":"border-right-width:0px;border-bottom-width:0px;"}).text
-
-print(left_money)
+if __name__ == "__main__":
+    while True:
+        xiaoqu = "曾厝安学生公寓"
+        louming = "7号楼"
+        roomid = "519"
+        try:
+            left = ElecRoomQuery(xiaoqu, louming, roomid)
+        except:
+            SendEmail('1066616102@qq.com', From="电费检查器", To="Myself", Subject="电费查询失败", Message="电费查询失败，请检查输入！")
+            continue
+        # print(xiaoqu + louming + roomid + "电费剩余" + str(left) + "元str。")
+        if left < 5:
+            Str = xiaoqu + louming + roomid + "电费剩余" + str(left) + "元。" + "请尽快充值！"
+            SendEmail('1066616102@qq.com', From="电费检查器", To="Myself", Subject="电费查询成功", Message=Str)
+        days = 24 * 60 * 60
+        time.sleep(days)
+    # print(left_money)
 
 
 
